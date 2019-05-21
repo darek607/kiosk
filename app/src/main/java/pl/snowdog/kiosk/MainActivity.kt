@@ -1,5 +1,6 @@
 package pl.snowdog.kiosk
 
+import android.app.ActivityManager
 import android.app.admin.DevicePolicyManager
 import android.app.admin.SystemUpdatePolicy
 import android.content.ComponentName
@@ -11,15 +12,17 @@ import android.os.Bundle
 import android.os.UserManager
 import android.provider.Settings
 import android.support.v7.app.AppCompatActivity
-import android.view.View
+import android.view.WindowManager
 import android.widget.Toast
 import kotlinx.android.synthetic.main.activity_main.*
 
 
+//TODO Follow codelabs tutorial: https://codelabs.developers.google.com/codelabs/cosu/index.html#5
 class MainActivity : AppCompatActivity() {
 
     private lateinit var mAdminComponentName: ComponentName
     private lateinit var mDevicePolicyManager: DevicePolicyManager
+    private var shouldStartKiosk = true
 
     companion object {
         const val LOCK_ACTIVITY_KEY = "pl.snowdog.kiosk.MainActivity"
@@ -27,7 +30,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.addFlags(WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
+
         setContentView(R.layout.activity_main)
+        shouldStartKiosk = intent.getBooleanExtra(LOCK_ACTIVITY_KEY, true)
 
         mAdminComponentName = MyDeviceAdminReceiver.getComponentName(this)
         mDevicePolicyManager = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
@@ -39,9 +45,11 @@ class MainActivity : AppCompatActivity() {
         } else {
             Toast.makeText(applicationContext, R.string.not_device_owner, Toast.LENGTH_SHORT).show()
         }
-        btStartLockTask.setOnClickListener {
+
+        if (shouldStartKiosk) {
             setKioskPolicies(true, isAdmin)
         }
+
         btStopLockTask.setOnClickListener {
 
             setKioskPolicies(false, isAdmin)
@@ -52,7 +60,17 @@ class MainActivity : AppCompatActivity() {
             startActivity(intent)
         }
 
+    }
 
+    override fun onStart() {
+        super.onStart()
+        // Start lock task mode if its not already active
+        if (shouldStartKiosk && mDevicePolicyManager.isLockTaskPermitted(this.packageName)) {
+            val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            if (am.lockTaskModeState == ActivityManager.LOCK_TASK_MODE_NONE) {
+                startLockTask()
+            }
+        }
     }
 
     private fun setKioskPolicies(enable: Boolean, isAdmin: Boolean) {
@@ -61,10 +79,13 @@ class MainActivity : AppCompatActivity() {
             enableStayOnWhilePluggedIn(enable)
             setUpdatePolicy(enable)
             setAsHomeApp(enable)
-            setKeyGuardEnabled(enable)
+
+            // Disable keyguard and status bar
+            mDevicePolicyManager.setKeyguardDisabled(mAdminComponentName, !enable)
+            mDevicePolicyManager.setStatusBarDisabled(mAdminComponentName, !enable)
         }
         setLockTask(enable, isAdmin)
-        setImmersiveMode(enable)
+        //setImmersiveMode(enable)
     }
 
     // region restrictions
@@ -127,10 +148,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun setKeyGuardEnabled(enable: Boolean) {
-        mDevicePolicyManager.setKeyguardDisabled(mAdminComponentName, !enable)
-    }
 
+    /*
     private fun setImmersiveMode(enable: Boolean) {
         if (enable) {
             val flags = (View.SYSTEM_UI_FLAG_LAYOUT_STABLE
@@ -146,5 +165,5 @@ class MainActivity : AppCompatActivity() {
                     or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN)
             window.decorView.systemUiVisibility = flags
         }
-    }
+    } */
 }
